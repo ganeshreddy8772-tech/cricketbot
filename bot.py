@@ -1,336 +1,145 @@
 import os
-import re
-import easyocr
 import pytz
-
+import asyncio
 from datetime import datetime, timedelta
-from apscheduler.schedulers.background import BackgroundScheduler
-
+# Changed to AsyncIOScheduler for async/await support
+from apscheduler.schedulers.asyncio import AsyncIOScheduler 
 from telegram import Update
 from telegram.ext import (
-Application,
-CommandHandler,
-MessageHandler,
-ContextTypes,
-filters
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
 )
-
-# ======================================
-
-# SETTINGS
-
-# ======================================
 
 TOKEN = "8982157709:AAESIhjiMcieVt5kcwIenjUbZDURdVq-Nuk"
-
 CHANNEL_ID = "@cricketbotganeu"
-
 TIMEZONE = pytz.timezone("Asia/Kolkata")
 
-# ======================================
-
-# OCR
-
-# ======================================
-
-reader = easyocr.Reader(['en'])
-
-scheduler = BackgroundScheduler(timezone=TIMEZONE)
+# Initialize the Async Scheduler
+scheduler = AsyncIOScheduler(timezone=TIMEZONE)
 scheduler.start()
 
-waiting_for_schedule = False
+last_poster_path = None
 
-# ======================================
-
-# HELPERS
-
-# ======================================
-
-def extract_match_info(text):
-
-    lines = []
-
-for line in text.split("\n"):
-    line = line.strip()
-
-    if line:
-        lines.append(line)
-
-time_match = re.search(
-    r'(\d{1,2}:\d{2}\s*[AP]M)',
-    text,
-    re.IGNORECASE
-)
-
-match_time = None
-
-if time_match:
-    match_time = time_match.group(1)
-
-teams = []
-
-for line in lines:
-
-    lower = line.lower()
-
-    if "starts at" in lower:
-        continue
-
-    if re.search(r'\d{1,2}:\d{2}', line):
-        continue
-
-    if any(
-        x in lower
-        for x in [
-            "t20",
-            "odi",
-            "test",
-            "cup",
-            "league",
-            "series",
-            "match"
-        ]
-    ):
-        continue
-
-    teams.append(line)
-
-if len(teams) >= 2:
-
-    team1 = teams[0]
-    team2 = teams[-1]
-
-    return team1, team2, match_time
-
-return None, None, None
-
-
-async def send_team_post(
-application,
-image_path,
-team_name
-):
-
-
-with open(image_path, "rb") as photo:
-
-    await application.bot.send_photo(
-        chat_id=CHANNEL_ID,
-        photo=photo,
-        caption=team_name
-    )
-
-
-def create_job(
-application,
-image_path,
-team_name,
-run_time
-):
-
-
-scheduler.add_job(
-    lambda: application.create_task(
-        send_team_post(
-            application,
-            image_path,
-            team_name
+async def send_team_post(application, image_path, team_name):
+    """Triggered by the scheduler to send the photo to the channel."""
+    with open(image_path, "rb") as photo:
+        await application.bot.send_photo(
+            chat_id=CHANNEL_ID,
+            photo=photo,
+            caption=team_name
         )
-    ),
-    "date",
-    run_date=run_time
-)
 
-
-# ======================================
-
-# COMMANDS
-
-# ======================================
+def create_job(application, image_path, team_name, run_time):
+    """Adds an async job to the scheduler."""
+    scheduler.add_job(
+        send_team_post,
+        "date",
+        run_date=run_time,
+        args=[application, image_path, team_name] # Pass arguments safely here
+    )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Send poster first, then send:\n\nTeam 1\nTeam 2\n07:00 AM"
+    )
 
+async def save_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global last_poster_path
+    os.makedirs("posters", exist_ok=True)
+    
+    photo = update.message.photo[-1]
+    telegram_file = await photo.get_file()
+    filename = f"poster_{update.message.message_id}.jpg"
+    filepath = os.path.join("posters", filename)
+    
+    await telegram_file.download_to_drive(filepath)
+    last_poster_path = filepath
+    
+    await update.message.reply_text(
+        "✅ Poster saved.\n\nNow send:\n\nTeam 1\nTeam 2\n07:00 AM"
+    )
 
-await update.message.reply_text(
-    "Bot is working."
-)
+async def save_match_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global last_poster_path
+    if not last_poster_path:
+        await update.message.reply_text("❌ Send a poster first.")
+        return
 
+    lines = update.message.text.strip().splitlines()
+    if len(lines) < 3:
+        await update.message.reply_text(
+            "❌ Format:\n\nTeam 1\nTeam 2\n07:00 AM"
+        )
+        return
 
-async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    team1 = lines[0].strip()
+    team2 = lines[1].strip()
+    match_time = lines[2].strip()
 
+    try:
+        # 1. Get current time in Kolkata
+        now = datetime.now(TIMEZONE)
+        
+        # 2. Parse the string into a NAIVE datetime object first
+        parsed_time = datetime.strptime(match_time, "%I:%M %p")
+        
+        # 3. Combine today's date with the parsed time (Naive)
+        naive_dt = datetime(
+            now.year,
+            now.month,
+            now.day,
+            parsed_time.hour,
+            parsed_time.minute
+        )
+        
+        # 4. Localize it to Kolkata timezone properly
+        match_dt = TIMEZONE.localize(naive_dt)
 
-global waiting_for_schedule
+        # If the time has already passed today, assume it's for tomorrow
+        if match_dt < now:
+            match_dt += timedelta(days=1)
 
-waiting_for_schedule = True
+    except ValueError:
+        await update.message.reply_text("❌ Invalid time format. Use exactly '07:00 AM' or '11:30 PM'")
+        return
 
-await update.message.reply_text(
-    "Send today's schedule."
-)
+    # Calculate post times
+    post1_time = match_dt - timedelta(hours=1)
+    post2_time = post1_time + timedelta(minutes=1)
 
+    # Schedule the jobs using context.application
+    create_job(
+        context.application,
+        last_poster_path,
+        team1,
+        post1_time
+    )
 
-async def save_schedule(
-update: Update,
-context: ContextTypes.DEFAULT_TYPE
-):
-
-
-global waiting_for_schedule
-
-if waiting_for_schedule:
-
-    with open(
-        "schedule.txt",
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        f.write(update.message.text)
-
-    waiting_for_schedule = False
+    create_job(
+        context.application,
+        last_poster_path,
+        team2,
+        post2_time
+    )
 
     await update.message.reply_text(
-        "✅ Schedule saved."
+        f"✅ Scheduled\n\n"
+        f"{team1} -> {post1_time.strftime('%d-%m-%Y %I:%M %p')}\n"
+        f"{team2} -> {post2_time.strftime('%d-%m-%Y %I:%M %p')}"
     )
 
+def main():
+    app = Application.builder().token(TOKEN).build()
+    
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.PHOTO, save_photo))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, save_match_details))
+    
+    print("Bot started...")
+    app.run_polling()
 
-# ======================================
-
-# PHOTO HANDLER
-
-# ======================================
-
-async def save_photo(
-update: Update,
-context: ContextTypes.DEFAULT_TYPE
-):
-
-
-os.makedirs("posters", exist_ok=True)
-
-photo = update.message.photo[-1]
-
-telegram_file = await photo.get_file()
-
-filename = f"poster_{update.message.message_id}.jpg"
-
-filepath = os.path.join(
-    "posters",
-    filename
-)
-
-await telegram_file.download_to_drive(
-    filepath
-)
-
-result = reader.readtext(
-    filepath,
-    detail=0
-)
-
-detected_text = "\n".join(result)
-
-await update.message.reply_text(
-    f"✅ Poster saved: {filename}"
-)
-
-team1, team2, match_time = extract_match_info(
-    detected_text
-)
-
-if not all([team1, team2, match_time]):
-
-    await update.message.reply_text(
-        f"❌ Could not detect teams/time.\n\n{detected_text}"
-    )
-
-    return
-
-await update.message.reply_text(
-    f"📖 OCR Result\n\n"
-    f"Team 1: {team1}\n"
-    f"Team 2: {team2}\n"
-    f"Match Time: {match_time}"
-)
-
-now = datetime.now(TIMEZONE)
-
-match_dt = datetime.strptime(
-    match_time,
-    "%I:%M %p"
-)
-
-match_dt = TIMEZONE.localize(
-    datetime(
-        now.year,
-        now.month,
-        now.day,
-        match_dt.hour,
-        match_dt.minute
-    )
-)
-
-if match_dt < now:
-    match_dt += timedelta(days=1)
-
-post1_time = match_dt - timedelta(hours=1)
-post2_time = post1_time + timedelta(minutes=1)
-
-create_job(
-    context.application,
-    filepath,
-    team1,
-    post1_time
-)
-
-create_job(
-    context.application,
-    filepath,
-    team2,
-    post2_time
-)
-
-await update.message.reply_text(
-    f"✅ Scheduled\n\n"
-    f"{team1} -> {post1_time.strftime('%d-%m-%Y %I:%M %p')}\n"
-    f"{team2} -> {post2_time.strftime('%d-%m-%Y %I:%M %p')}"
-)
-
-
-# ======================================
-
-# APP
-
-# ======================================
-
-app = Application.builder().token(TOKEN).build()
-
-app.add_handler(
-CommandHandler(
-"start",
-start
-)
-)
-
-app.add_handler(
-CommandHandler(
-"schedule",
-schedule
-)
-)
-
-app.add_handler(
-MessageHandler(
-filters.TEXT & ~filters.COMMAND,
-save_schedule
-)
-)
-
-app.add_handler(
-MessageHandler(
-filters.PHOTO,
-save_photo
-)
-)
-
-print("Bot started...")
-app.run_polling()
+if __name__ == "__main__":
+    main()
