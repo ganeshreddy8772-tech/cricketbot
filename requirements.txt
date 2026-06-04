@@ -1,0 +1,9 @@
+python-telegram-bot
+easyocr
+apscheduler
+pytz
+torch
+torchvision
+opencv-python-headless
+numpy
+Pillow
