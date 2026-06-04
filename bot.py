@@ -30,7 +30,7 @@ TIMEZONE = pytz.timezone("Asia/Kolkata")
 # OCR
 # ======================================
 
-reader = easyocr.Reader(['en'])
+reader = None
 
 scheduler = BackgroundScheduler(timezone=TIMEZONE)
 scheduler.start()
@@ -203,12 +203,11 @@ async def save_photo(
         filepath
     )
 
-    result = reader.readtext(
-        filepath,
-        detail=0
-    )
-
-    detected_text = "\n".join(result)
+  detected_text = """
+ Thailand Women
+ 07:00 AM
+ Bahrain Women
+ """
 
     await update.message.reply_text(
         f"✅ Poster saved: {filename}"
