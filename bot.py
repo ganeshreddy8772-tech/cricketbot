@@ -48,8 +48,7 @@ waiting_for_schedule = False
 
 def extract_match_info(text):
 
-
-lines = []
+    lines = []
 
 for line in text.split("\n"):
     line = line.strip()
