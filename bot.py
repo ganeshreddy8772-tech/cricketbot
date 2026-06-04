@@ -183,10 +183,16 @@ async def save_schedule(
 # PHOTO HANDLER
 # ======================================
 
+# ======================================
+# PHOTO HANDLER
+# ======================================
+
 async def save_photo(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
+    os.makedirs("posters", exist_ok=True)
 
     photo = update.message.photo[-1]
 
@@ -203,11 +209,11 @@ async def save_photo(
         filepath
     )
 
-  detected_text = """
- Thailand Women
- 07:00 AM
- Bahrain Women
- """
+    detected_text = """
+Thailand Women
+07:00 AM
+Bahrain Women
+"""
 
     await update.message.reply_text(
         f"✅ Poster saved: {filename}"
@@ -274,7 +280,6 @@ async def save_photo(
         f"{team1} -> {post1_time.strftime('%d-%m-%Y %I:%M %p')}\n"
         f"{team2} -> {post2_time.strftime('%d-%m-%Y %I:%M %p')}"
     )
-
 # ======================================
 # APP
 # ======================================
