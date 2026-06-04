@@ -2,7 +2,6 @@ import os
 import pytz
 import asyncio
 from datetime import datetime, timedelta
-# Changed to AsyncIOScheduler for async/await support
 from apscheduler.schedulers.asyncio import AsyncIOScheduler 
 from telegram import Update
 from telegram.ext import (
@@ -13,18 +12,23 @@ from telegram.ext import (
     filters
 )
 
-TOKEN = "8982157709:AAESIhjiMcieVt5kcwIenjUbZDURdVq-Nuk"
+TOKEN = "8982157709:AAF8T_3gmhVD9LOdMGWDu-AQbNnWtacd7Kc"
 CHANNEL_ID = "@cricketbotganeu"
 TIMEZONE = pytz.timezone("Asia/Kolkata")
 
-# Initialize the Async Scheduler
+# Define the scheduler globally, but DON'T start it yet
 scheduler = AsyncIOScheduler(timezone=TIMEZONE)
-scheduler.start()
-
 last_poster_path = None
 
+async def post_init(application: Application):
+    """
+    This function runs automatically AFTER the bot initializes 
+    and the asyncio event loop is fully running.
+    """
+    scheduler.start()
+    print("Scheduler started successfully within the event loop.")
+
 async def send_team_post(application, image_path, team_name):
-    """Triggered by the scheduler to send the photo to the channel."""
     with open(image_path, "rb") as photo:
         await application.bot.send_photo(
             chat_id=CHANNEL_ID,
@@ -33,12 +37,11 @@ async def send_team_post(application, image_path, team_name):
         )
 
 def create_job(application, image_path, team_name, run_time):
-    """Adds an async job to the scheduler."""
     scheduler.add_job(
         send_team_post,
         "date",
         run_date=run_time,
-        args=[application, image_path, team_name] # Pass arguments safely here
+        args=[application, image_path, team_name]
     )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -80,13 +83,9 @@ async def save_match_details(update: Update, context: ContextTypes.DEFAULT_TYPE)
     match_time = lines[2].strip()
 
     try:
-        # 1. Get current time in Kolkata
         now = datetime.now(TIMEZONE)
-        
-        # 2. Parse the string into a NAIVE datetime object first
         parsed_time = datetime.strptime(match_time, "%I:%M %p")
         
-        # 3. Combine today's date with the parsed time (Naive)
         naive_dt = datetime(
             now.year,
             now.month,
@@ -95,10 +94,8 @@ async def save_match_details(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parsed_time.minute
         )
         
-        # 4. Localize it to Kolkata timezone properly
         match_dt = TIMEZONE.localize(naive_dt)
 
-        # If the time has already passed today, assume it's for tomorrow
         if match_dt < now:
             match_dt += timedelta(days=1)
 
@@ -106,11 +103,9 @@ async def save_match_details(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ Invalid time format. Use exactly '07:00 AM' or '11:30 PM'")
         return
 
-    # Calculate post times
     post1_time = match_dt - timedelta(hours=1)
     post2_time = post1_time + timedelta(minutes=1)
 
-    # Schedule the jobs using context.application
     create_job(
         context.application,
         last_poster_path,
@@ -132,13 +127,14 @@ async def save_match_details(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 def main():
-    app = Application.builder().token(TOKEN).build()
+    # Notice .post_init(post_init) added to the builder chain below
+    app = Application.builder().token(TOKEN).post_init(post_init).build()
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, save_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, save_match_details))
     
-    print("Bot started...")
+    print("Bot starting...")
     app.run_polling()
 
 if __name__ == "__main__":
