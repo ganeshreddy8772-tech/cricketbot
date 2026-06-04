@@ -48,7 +48,7 @@ waiting_for_schedule = False
 
 def extract_match_info(text):
 
-```
+
 lines = []
 
 for line in text.split("\n"):
@@ -104,7 +104,7 @@ if len(teams) >= 2:
     return team1, team2, match_time
 
 return None, None, None
-```
+
 
 async def send_team_post(
 application,
@@ -112,7 +112,7 @@ image_path,
 team_name
 ):
 
-```
+
 with open(image_path, "rb") as photo:
 
     await application.bot.send_photo(
@@ -120,7 +120,7 @@ with open(image_path, "rb") as photo:
         photo=photo,
         caption=team_name
     )
-```
+
 
 def create_job(
 application,
@@ -129,7 +129,7 @@ team_name,
 run_time
 ):
 
-```
+
 scheduler.add_job(
     lambda: application.create_task(
         send_team_post(
@@ -141,7 +141,7 @@ scheduler.add_job(
     "date",
     run_date=run_time
 )
-```
+
 
 # ======================================
 
@@ -151,15 +151,15 @@ scheduler.add_job(
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-```
+
 await update.message.reply_text(
     "Bot is working."
 )
-```
+
 
 async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-```
+
 global waiting_for_schedule
 
 waiting_for_schedule = True
@@ -167,14 +167,14 @@ waiting_for_schedule = True
 await update.message.reply_text(
     "Send today's schedule."
 )
-```
+
 
 async def save_schedule(
 update: Update,
 context: ContextTypes.DEFAULT_TYPE
 ):
 
-```
+
 global waiting_for_schedule
 
 if waiting_for_schedule:
@@ -192,7 +192,7 @@ if waiting_for_schedule:
     await update.message.reply_text(
         "✅ Schedule saved."
     )
-```
+
 
 # ======================================
 
@@ -205,7 +205,7 @@ update: Update,
 context: ContextTypes.DEFAULT_TYPE
 ):
 
-```
+
 os.makedirs("posters", exist_ok=True)
 
 photo = update.message.photo[-1]
@@ -295,7 +295,7 @@ await update.message.reply_text(
     f"{team1} -> {post1_time.strftime('%d-%m-%Y %I:%M %p')}\n"
     f"{team2} -> {post2_time.strftime('%d-%m-%Y %I:%M %p')}"
 )
-```
+
 
 # ======================================
 
