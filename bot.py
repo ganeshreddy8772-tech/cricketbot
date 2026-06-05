@@ -13,7 +13,7 @@ from telegram.ext import (
 )
 
 TOKEN = "8982157709:AAF8T_3gmhVD9LOdMGWDu-AQbNnWtacd7Kc"
-CHANNEL_ID = "@cricketbotganeu"
+CHANNEL_ID = -1003928594011
 TIMEZONE = pytz.timezone("Asia/Kolkata")
 
 # Define the scheduler globally, but DON'T start it yet
